@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local inputs and generated game assets
+*.apk
+*.apks
+*.aab
+*.acb
+*.awb
+*.hca
+*.hcakey
+*.wav
+*.mp3
+*.ogg
+*.bundle
+
+# Reverse-engineering and extraction output
+extract-*/
+unitypy-export/
+il2cpp-dump/
+alchemy-*/
+converted-*/
+key-test/
+out/
+tmp*/
+
+# Third-party tools downloaded locally
+tools/
+
+# Large local notes/dumps
+apk-file-list.txt
+global-metadata-strings.txt
+il2cpp-usym-strings.txt
+*.zip
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,4 @@
+UnityPy>=1.25.0
+lz4
+capstone
+pyelftools
