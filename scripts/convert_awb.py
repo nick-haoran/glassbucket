@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Extract HCA streams from CRIWARE AWB/AFS2 files and optionally transcode them.
 
-This targets the AWB files found in Polytone's Android APK. The audio payload is
+This targets AWB files found in the supported Android APK. The audio payload is
 stored as HCA inside an AFS2 container; ffmpeg can decode the extracted HCA stream
 but does not understand this AWB container directly.
 
-Important: Polytone's encrypted AWB files also need the internal AWB/HCA subkey.
+Important: encrypted AWB files also need the internal AWB/HCA subkey.
 This script's ffmpeg transcode path does not recover that subkey, so encrypted
 outputs may sound wrong even when --hca-key is provided. Use vgmstream with a
 .hcakey companion file for final decrypted audio.
@@ -198,7 +198,7 @@ def iter_awb_from_archive(path: Path, pattern: str | None):
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Extract/decode HCA streams from CRIWARE AWB files. For Polytone encrypted audio, prefer vgmstream."
+        description="Extract/decode HCA streams from CRIWARE AWB files. For encrypted AWB audio, prefer vgmstream."
     )
     parser.add_argument(
         "inputs",

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Replace an existing Polytone song slot inside an APK.
+"""Replace an existing song slot inside an APK.
 
-This is intentionally a replacement-slot tool. It keeps existing Polytone IDs
-such as TG_ALCHEMY, CH_ALCHEMY_BASIC, and AS_ALCHEMY so the Addressables catalog
-does not need new entries.
+This is intentionally a replacement-slot tool. It keeps existing slot IDs
+such as TG_TARGET_SLOT, CH_TARGET_SLOT_BASIC, and AS_TARGET_SLOT so the
+Addressables catalog does not need new entries.
 """
 
 from __future__ import annotations
@@ -139,7 +139,7 @@ def patch_catalog_bundle_metadata(
 ) -> bytes:
     """Patch Addressables catalog bundle metadata after replacing local bundles.
 
-    Polytone's catalog stores AssetBundleRequestOptions near each bundle filename.
+    The target catalog stores AssetBundleRequestOptions near each bundle filename.
     For the chartdata bundles verified in this APK, the 32-bit CRC sits 68 bytes
     after the filename and BundleSize sits 72 bytes after the filename. Setting
     CRC to 0 disables Unity's CRC check; BundleSize must match the new bundle.
@@ -447,7 +447,7 @@ def resolve_output(input_apk: Path, out: Optional[Path], slot: str) -> Path:
 
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Replace an existing Polytone song slot without adding catalog entries."
+        description="Replace an existing song slot without adding catalog entries."
     )
     parser.add_argument("--apk", type=Path, required=True, help="Input APK path")
     parser.add_argument("--out", type=Path, help="Output APK path")

@@ -4,18 +4,25 @@
 from __future__ import annotations
 
 import math
+import os
 import subprocess
+from argparse import ArgumentParser
 from pathlib import Path
 
 import numpy as np
 
 
-INPUT = Path("extract-min/assets/Audio/AS_1XE.entry0.hcaish")
+DEFAULT_HCA_KEYS = [10029784319315621076]
 SR = 48000
 SECONDS = 12
 
 
-def decode(name: str, key: int | None) -> np.ndarray:
+def parse_key(raw: str) -> int:
+    raw = raw.strip()
+    return int(raw, 16) if raw.lower().startswith("0x") else int(raw)
+
+
+def decode(input_path: Path, key: int | None) -> np.ndarray:
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
     if key is not None:
         cmd += [
@@ -28,7 +35,7 @@ def decode(name: str, key: int | None) -> np.ndarray:
         "-f",
         "hca",
         "-i",
-        str(INPUT),
+        str(input_path),
         "-t",
         str(SECONDS),
         "-f",
@@ -61,21 +68,42 @@ def zero_cross_rate(audio: np.ndarray) -> float:
     return float(np.mean(np.signbit(audio[1:]) != np.signbit(audio[:-1])))
 
 
+def build_argparser() -> ArgumentParser:
+    parser = ArgumentParser(description="Probe candidate HCA keys with ffmpeg.")
+    parser.add_argument("--input", type=Path, required=True, help="Input HCA file")
+    parser.add_argument(
+        "--keys",
+        help="Comma-separated decimal or 0x-prefixed candidate keys. Can also use HCA_KEYS.",
+    )
+    parser.add_argument(
+        "--mask",
+        type=parse_key,
+        help="Optional mask used to add xor/xor56 candidate variants for each key.",
+    )
+    return parser
+
+
 def main() -> int:
-    raw = int("10029784319315621076")
-    mask = 0x00D47EB533AEF7E5
-    candidates = {
-        "none": None,
-        "raw": raw,
-        "raw56": raw & 0x00FFFFFFFFFFFFFF,
-        "xor": raw ^ mask,
-        "xor56": (raw ^ mask) & 0x00FFFFFFFFFFFFFF,
-        "mask": mask,
-        "mask56": mask & 0x00FFFFFFFFFFFFFF,
-    }
+    args = build_argparser().parse_args()
+    raw_keys = args.keys or os.environ.get("HCA_KEYS", "")
+    keys = [parse_key(item) for item in raw_keys.split(",") if item.strip()]
+    if not keys:
+        keys = DEFAULT_HCA_KEYS
+
+    candidates: dict[str, int | None] = {"none": None}
+    for index, key in enumerate(keys, start=1):
+        prefix = f"key{index}"
+        candidates[prefix] = key
+        candidates[f"{prefix}_56"] = key & 0x00FFFFFFFFFFFFFF
+        if args.mask is not None:
+            candidates[f"{prefix}_xor"] = key ^ args.mask
+            candidates[f"{prefix}_xor56"] = (key ^ args.mask) & 0x00FFFFFFFFFFFFFF
+    if args.mask is not None:
+        candidates["mask"] = args.mask
+        candidates["mask56"] = args.mask & 0x00FFFFFFFFFFFFFF
 
     for name, key in candidates.items():
-        audio = decode(name, key)
+        audio = decode(args.input, key)
         rms = float(np.sqrt(np.mean(audio * audio)))
         peak = float(np.max(np.abs(audio)))
         flat = spectral_flatness(audio)

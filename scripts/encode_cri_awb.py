@@ -17,6 +17,8 @@ from PyCriCodecsEx.chunk import CriHcaQuality
 from PyCriCodecsEx.hca import HCACodec
 
 
+DEFAULT_HCA_KEY = 10029784319315621076
+
 QUALITY_MAP = {
     "highest": CriHcaQuality.Highest,
     "high": CriHcaQuality.High,
@@ -40,7 +42,12 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--out-awb", type=Path, required=True, help="Output AWB path")
     parser.add_argument("--out-acb", type=Path, required=True, help="Output ACB path")
     parser.add_argument("--out-hca", type=Path, help="Optional output HCA path")
-    parser.add_argument("--key", type=int, required=True, help="CRI HCA keycode as a 64-bit integer")
+    parser.add_argument(
+        "--key",
+        type=int,
+        default=DEFAULT_HCA_KEY,
+        help="CRI HCA keycode as a 64-bit integer",
+    )
     parser.add_argument("--quality", choices=sorted(QUALITY_MAP), default="high")
     parser.add_argument("--write-hcakey", action="store_true", help="Write .hcakey files next to the output AWB for vgmstream verification")
     return parser
