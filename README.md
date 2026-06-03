@@ -61,6 +61,11 @@ python scripts\polytone_replace.py `
 
 The signed APK is written to `out/signed/`.
 
+When chartdata bundles are changed, `polytone_replace.py` automatically patches
+the Addressables catalog metadata for those bundles by setting CRC to `0` and
+updating `BundleSize`. Without this step, Polytone can reject the modified
+chart bundles and show an empty song list.
+
 ## Current limitation
 
 The encoder currently uses an existing ACB as a cue/sheet template and generates a new external AWB. If a target game relies on exact ACB duration metadata, the ACB may need additional patching.

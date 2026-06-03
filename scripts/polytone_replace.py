@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import struct
 import subprocess
 import sys
 import time
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Tuple
+from pathlib import Path, PurePosixPath
+from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 
 import UnityPy
 
@@ -26,7 +27,12 @@ DIFFICULTIES = ("BASIC", "ADVANCED", "HARD", "EXPERT")
 GROUP_BUNDLE = "assets/aa/Android/chartdata-chartgroups_assets_all_5a6f189f2d5a4b412aaccd7d9ef79f9e.bundle"
 HEADER_BUNDLE = "assets/aa/Android/chartdata-chartheaders_assets_all_4ead93ce53e5f795d0fc218f71549e5b.bundle"
 CHART_BUNDLE = "assets/aa/Android/chartdata-charts_assets_all_f4607ccf7ee5a496b006b55051836f83.bundle"
+CATALOG_BIN = "assets/aa/catalog.bin"
 DEFAULT_UBER_SIGNER = Path("tools/uber-apk-signer/uber-apk-signer-1.3.0.jar")
+
+ADDRESSABLE_BUNDLES = (GROUP_BUNDLE, HEADER_BUNDLE, CHART_BUNDLE)
+CATALOG_BUNDLE_CRC_REL = 68
+CATALOG_BUNDLE_SIZE_REL = 72
 
 SIGNATURE_PREFIX = "META-INF/"
 SIGNATURE_SUFFIXES = (".RSA", ".DSA", ".EC", ".SF", ".MF")
@@ -123,6 +129,50 @@ def patch_textasset_bundle(bundle_bytes: bytes, replacements: Mapping[str, str])
     if env.file is None:
         raise RuntimeError("UnityPy did not expose a writable bundle file")
     return env.file.save()
+
+
+def patch_catalog_bundle_metadata(
+    catalog_bytes: bytes,
+    bundle_sizes: Mapping[str, int],
+    *,
+    disable_crc: bool = True,
+) -> bytes:
+    """Patch Addressables catalog bundle metadata after replacing local bundles.
+
+    Polytone's catalog stores AssetBundleRequestOptions near each bundle filename.
+    For the chartdata bundles verified in this APK, the 32-bit CRC sits 68 bytes
+    after the filename and BundleSize sits 72 bytes after the filename. Setting
+    CRC to 0 disables Unity's CRC check; BundleSize must match the new bundle.
+    """
+    catalog = bytearray(catalog_bytes)
+    for bundle_path, new_size in bundle_sizes.items():
+        bundle_name = PurePosixPath(bundle_path).name.encode("utf-8")
+        name_offset = catalog.find(bundle_name)
+        if name_offset < 0:
+            raise RuntimeError(f"Bundle name not found in catalog: {bundle_name.decode()}")
+
+        base = name_offset + len(bundle_name)
+        crc_offset = base + CATALOG_BUNDLE_CRC_REL
+        size_offset = base + CATALOG_BUNDLE_SIZE_REL
+        if size_offset + 4 > len(catalog):
+            raise RuntimeError(f"Catalog record is too short for bundle: {bundle_name.decode()}")
+
+        old_size = struct.unpack_from("<I", catalog, size_offset)[0]
+        if old_size <= 0:
+            raise RuntimeError(
+                f"Unexpected catalog BundleSize for {bundle_name.decode()}: {old_size}"
+            )
+
+        if disable_crc:
+            struct.pack_into("<I", catalog, crc_offset, 0)
+        struct.pack_into("<I", catalog, size_offset, new_size)
+        eprint(
+            "[catalog]",
+            bundle_name.decode(),
+            f"BundleSize {old_size}->{new_size}",
+            "Crc->0" if disable_crc else "Crc unchanged",
+        )
+    return bytes(catalog)
 
 
 def require_zip_entry(zf: zipfile.ZipFile, name: str) -> zipfile.ZipInfo:
@@ -315,6 +365,7 @@ def build_replacements(args: argparse.Namespace) -> Dict[str, bytes]:
         group_bytes = zf.read(GROUP_BUNDLE)
         header_bytes = zf.read(HEADER_BUNDLE)
         chart_bytes = zf.read(CHART_BUNDLE)
+        catalog_bytes = zf.read(CATALOG_BIN)
 
     group_assets = load_textassets(group_bytes)
     header_assets = load_textassets(header_bytes)
@@ -376,6 +427,15 @@ def build_replacements(args: argparse.Namespace) -> Dict[str, bytes]:
     if chart_replacements:
         replacements[CHART_BUNDLE] = patch_textasset_bundle(chart_bytes, chart_replacements)
 
+    if not args.no_catalog_patch:
+        bundle_sizes = {
+            bundle: len(replacements[bundle])
+            for bundle in ADDRESSABLE_BUNDLES
+            if bundle in replacements
+        }
+        if bundle_sizes:
+            replacements[CATALOG_BIN] = patch_catalog_bundle_metadata(catalog_bytes, bundle_sizes)
+
     return replacements
 
 
@@ -418,6 +478,11 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--bpm", help="Header BPMDisplay")
     parser.add_argument("--visual-source-id", help="Header VisualSourceID")
     parser.add_argument("--cover-id", help="Header/group CoverID")
+    parser.add_argument(
+        "--no-catalog-patch",
+        action="store_true",
+        help="Do not patch Addressables catalog Crc/BundleSize for replaced chartdata bundles.",
+    )
 
     parser.add_argument(
         "--keep-signature",
