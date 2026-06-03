@@ -19,6 +19,7 @@ That means the custom chart appears under an existing in-game song slot. Cover a
 ## Included Tools
 
 - `scripts/encode_cri_awb.py`: encode a 16-bit PCM WAV into encrypted HCA, package it into an AWB, and copy an existing ACB template.
+- `scripts/list_slots.py`: list available replacement slot IDs from an APK.
 - `scripts/polytone_replace.py`: replace audio and chart data inside an APK, patch Addressables catalog metadata, and optionally sign the result.
 - `scripts/download_uber_apk_signer.ps1`: download `uber-apk-signer` for APK signing.
 - `scripts/convert_awb.py`: helper for CRI AWB/HCA extraction and decoding experiments.
@@ -30,7 +31,7 @@ That means the custom chart appears under an existing in-game song slot. Cover a
 
 - Python 3.10+
 - Java runtime
-- A target slot's original `.acb` and `.awb` files from the APK
+- An APK from the supported target build
 - Replacement chart files for one or more difficulties
 - A replacement `16-bit PCM WAV`
 
@@ -68,11 +69,20 @@ Choose a target slot already present in the game. The default slot used by the t
 ALCHEMY
 ```
 
-For a slot named `TARGET_SLOT`, the original audio files are expected to be:
+You can list available slot IDs directly from an APK:
 
-```text
-AS_TARGET_SLOT.acb
-AS_TARGET_SLOT.awb
+```powershell
+python scripts\list_slots.py `
+  --apk work\input\game.apk `
+  --format table
+```
+
+Filter by slot, title, or artist:
+
+```powershell
+python scripts\list_slots.py `
+  --apk work\input\game.apk `
+  --filter keyword
 ```
 
 Prepare chart files using the target game's chart text format. Difficulty labels accepted by the tool are:
@@ -90,8 +100,6 @@ Example workspace layout:
 work/
   input/
     game.apk
-    AS_TARGET_SLOT.acb
-    AS_TARGET_SLOT.awb
     custom_song.wav
     chart_basic.txt
     chart_advanced.txt
@@ -103,13 +111,13 @@ work/
 
 ## Step 1: Encode WAV To ACB/AWB
 
-Use the target slot's original AWB as the container template and the original ACB as the cue/sheet template:
+Use the APK and target slot to read the original ACB/AWB templates automatically:
 
 ```powershell
 python scripts\encode_cri_awb.py `
   --wav work\input\custom_song.wav `
-  --template-awb work\input\AS_TARGET_SLOT.awb `
-  --template-acb work\input\AS_TARGET_SLOT.acb `
+  --apk work\input\game.apk `
+  --slot TARGET_SLOT `
   --out-awb work\encoded\AS_TARGET_SLOT.awb `
   --out-acb work\encoded\AS_TARGET_SLOT.acb `
   --out-hca work\encoded\AS_TARGET_SLOT.hca `
@@ -120,10 +128,13 @@ Notes:
 
 - The supported target build uses the built-in key by default.
 - Pass `--key <keycode>` only when you need to override it.
-- AWB subkey is read from `--template-awb` automatically.
+- ACB/AWB templates are extracted from `--apk` using `--slot`.
+- AWB subkey is read from the target slot's original AWB automatically.
 - The input WAV must be 16-bit PCM.
 - The generated ACB is currently the target slot's original ACB copied as a template.
 - The generated AWB contains the newly encoded encrypted HCA audio.
+
+If you already extracted template audio manually, you can use `--template-awb` and `--template-acb` instead of `--apk`.
 
 ## Step 2: Verify Encoded Audio
 

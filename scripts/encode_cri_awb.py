@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import zipfile
 from pathlib import Path
 from typing import Optional
 
@@ -32,13 +33,29 @@ def write_hcakey(path: Path, key: int) -> None:
     path.write_text(str(key), encoding="ascii", newline="")
 
 
+def read_template_from_apk(apk: Path, slot: str) -> tuple[bytes, bytes]:
+    audio_id = f"AS_{slot.upper()}"
+    acb_path = f"assets/Audio/{audio_id}.acb"
+    awb_path = f"assets/Audio/{audio_id}.awb"
+    with zipfile.ZipFile(apk) as zf:
+        try:
+            return zf.read(acb_path), zf.read(awb_path)
+        except KeyError as exc:
+            raise RuntimeError(
+                f"Template audio not found in APK for slot {slot}: "
+                f"expected {acb_path} and {awb_path}"
+            ) from exc
+
+
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Encode WAV to encrypted HCA/AWB using an existing AWB/ACB as templates."
     )
     parser.add_argument("--wav", type=Path, required=True, help="Input 16-bit PCM WAV")
-    parser.add_argument("--template-awb", type=Path, required=True, help="AWB whose container parameters are reused")
-    parser.add_argument("--template-acb", type=Path, required=True, help="ACB copied to the output path")
+    parser.add_argument("--apk", type=Path, help="APK to read AS_<SLOT>.acb/.awb templates from")
+    parser.add_argument("--slot", default="ALCHEMY", help="Slot used with --apk to locate template audio")
+    parser.add_argument("--template-awb", type=Path, help="AWB whose container parameters are reused")
+    parser.add_argument("--template-acb", type=Path, help="ACB copied to the output path")
     parser.add_argument("--out-awb", type=Path, required=True, help="Output AWB path")
     parser.add_argument("--out-acb", type=Path, required=True, help="Output ACB path")
     parser.add_argument("--out-hca", type=Path, help="Optional output HCA path")
@@ -59,17 +76,27 @@ def main(argv: Optional[list[str]] = None) -> int:
         sys.stderr.reconfigure(encoding="utf-8")
 
     args = build_argparser().parse_args(argv)
-    for path_arg in ("wav", "template_awb", "template_acb"):
-        path = getattr(args, path_arg)
-        if not path.is_file():
-            raise SystemExit(f"Missing file: {path}")
+    if not args.wav.is_file():
+        raise SystemExit(f"Missing file: {args.wav}")
+    if args.apk:
+        if not args.apk.is_file():
+            raise SystemExit(f"Missing file: {args.apk}")
+        template_acb_bytes, template_awb_bytes = read_template_from_apk(args.apk, args.slot)
+    else:
+        if not args.template_awb or not args.template_acb:
+            raise SystemExit("Provide either --apk or both --template-awb and --template-acb")
+        for path in (args.template_awb, args.template_acb):
+            if not path.is_file():
+                raise SystemExit(f"Missing file: {path}")
+        template_acb_bytes = args.template_acb.read_bytes()
+        template_awb_bytes = args.template_awb.read_bytes()
 
     args.out_awb.parent.mkdir(parents=True, exist_ok=True)
     args.out_acb.parent.mkdir(parents=True, exist_ok=True)
     if args.out_hca:
         args.out_hca.parent.mkdir(parents=True, exist_ok=True)
 
-    template = AWB(str(args.template_awb))
+    template = AWB(template_awb_bytes)
     codec = HCACodec(
         str(args.wav),
         filename=args.out_awb.with_suffix(".hca").name,
@@ -87,7 +114,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     ).build()
 
     args.out_awb.write_bytes(awb_bytes)
-    args.out_acb.write_bytes(args.template_acb.read_bytes())
+    args.out_acb.write_bytes(template_acb_bytes)
     if args.out_hca:
         args.out_hca.write_bytes(hca_bytes)
 
